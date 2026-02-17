@@ -11,7 +11,7 @@ window.addEventListener('resize', () => {
 });
 resize();
 
-// Responsive layout detection
+// Responsive layout
 function isMobileScreen() {
   return window.innerWidth < 900;
 }
@@ -28,22 +28,34 @@ function updateLayout() {
     pcHint.style.display = 'block';
   }
 }
-
 window.onload = updateLayout;
 
-// Player
+// MENU
+let gameStarted = false;
+document.getElementById('startBtn').onclick = () => {
+  document.getElementById('menu').style.display = 'none';
+  gameStarted = true;
+};
+
+// WORLD
+const world = {
+  width: 4000,
+  height: 4000
+};
+
+// PLAYER
 const player = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
+  x: world.width / 2,
+  y: world.height / 2,
   radius: 30,
   minRadius: 15,
-  maxRadius: 120,
+  maxRadius: 200,
   speed: 3
 };
 
 let input = { x: 0, y: 0 };
 
-// Keyboard controls
+// Keyboard
 const keys = {};
 window.addEventListener('keydown', e => keys[e.key] = true);
 window.addEventListener('keyup', e => keys[e.key] = false);
@@ -70,14 +82,6 @@ const joystickBase = document.getElementById('joystickBase');
 const joystickStick = document.getElementById('joystickStick');
 let joystickActive = false;
 let joystickCenter = { x: 0, y: 0 };
-
-function getTouchPos(touch) {
-  const rect = joystickBase.getBoundingClientRect();
-  return {
-    x: touch.clientX - (rect.left + rect.width / 2),
-    y: touch.clientY - (rect.top + rect.height / 2)
-  };
-}
 
 joystickBase.addEventListener('touchstart', e => {
   e.preventDefault();
@@ -126,11 +130,15 @@ joystickBase.addEventListener('touchend', e => {
   input.y = 0;
 });
 
-// Game loop
+// CAMERA + ZOOM
+function getZoom() {
+  return 35 / player.radius;
+}
+
 function update() {
-  if (!isMobileScreen()) {
-    updateKeyboardInput();
-  }
+  if (!gameStarted) return;
+
+  if (!isMobileScreen()) updateKeyboardInput();
 
   const moving = input.x !== 0 || input.y !== 0;
 
@@ -145,42 +153,50 @@ function update() {
     if (player.radius > player.maxRadius) player.radius = player.maxRadius;
   }
 
-  // Keep inside screen
-  if (player.x - player.radius < 0) player.x = player.radius;
-  if (player.x + player.radius > canvas.width) player.x = canvas.width - player.radius;
-  if (player.y - player.radius < 0) player.y = player.radius;
-  if (player.y + player.radius > canvas.height) player.y = canvas.height - player.radius;
+  // Keep inside world
+  player.x = Math.max(player.radius, Math.min(world.width - player.radius, player.x));
+  player.y = Math.max(player.radius, Math.min(world.height - player.radius, player.y));
 }
 
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Grid
+  if (!gameStarted) return;
+
+  const zoom = getZoom();
+
+  ctx.save();
+  ctx.scale(zoom, zoom);
+
+  const camX = player.x - canvas.width / (2 * zoom);
+  const camY = player.y - canvas.height / (2 * zoom);
+
+  ctx.translate(-camX, -camY);
+
+  // WORLD GRID
   ctx.strokeStyle = '#222';
-  ctx.lineWidth = 1;
-  const step = 50;
-  for (let x = 0; x < canvas.width; x += step) {
+  ctx.lineWidth = 2;
+  const step = 100;
+  for (let x = 0; x < world.width; x += step) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, canvas.height);
+    ctx.lineTo(x, world.height);
     ctx.stroke();
   }
-  for (let y = 0; y < canvas.height; y += step) {
+  for (let y = 0; y < world.height; y += step) {
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(canvas.width, y);
+    ctx.lineTo(world.width, y);
     ctx.stroke();
   }
 
-  // Player
+  // PLAYER
   ctx.beginPath();
   ctx.fillStyle = '#4caf50';
   ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#fff';
-  ctx.font = '16px sans-serif';
-  ctx.fillText(`Radius: ${player.radius.toFixed(1)}`, 10, canvas.height - 10);
+  ctx.restore();
 }
 
 function loop() {
