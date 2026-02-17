@@ -128,7 +128,7 @@
       z-index: 20;
     }
 
-    /* LEADERBOARD */
+    /* LEADERBOARD + ZONE TIMER */
     #leaderboard {
       position: fixed;
       top: 10px;
@@ -167,11 +167,43 @@
       font-weight: bold;
     }
 
+    #zoneTimer {
+      margin-top: 4px;
+      font-size: 11px;
+      text-align: right;
+      opacity: 0.9;
+      color: #ff8080;
+    }
+
     @media (max-width: 600px) {
       #leaderboard {
         font-size: 11px;
         padding: 4px 8px;
         max-width: 55vw;
+      }
+      #zoneTimer {
+        font-size: 10px;
+      }
+    }
+
+    /* ZONE WARNING TEXT */
+    #zoneWarning {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 28px;
+      color: #ff5555;
+      text-shadow: 0 0 10px rgba(0,0,0,0.8);
+      font-weight: bold;
+      z-index: 30;
+      display: none;
+      text-align: center;
+    }
+
+    @media (max-width: 600px) {
+      #zoneWarning {
+        font-size: 20px;
       }
     }
   </style>
@@ -199,7 +231,10 @@
   <div id="leaderboard">
     <h3>Leaderboard</h3>
     <ul id="leaderboardList"></ul>
+    <div id="zoneTimer">Next shrink: --s</div>
   </div>
+
+  <div id="zoneWarning">ZONE SHRINKING SOON</div>
 
   <script src="game.js"></script>
 </body>
