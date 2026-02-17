@@ -5,21 +5,31 @@ function resize() {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', () => {
+  resize();
+  updateLayout();
+});
 resize();
 
-// Device detection
-const isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(navigator.userAgent);
+// Responsive layout detection
+function isMobileScreen() {
+  return window.innerWidth < 900;
+}
+
 const mobileControls = document.getElementById('mobileControls');
 const pcHint = document.getElementById('pcHint');
 
-if (isMobile) {
-  mobileControls.style.display = 'block';
-  pcHint.style.display = 'none';
-} else {
-  mobileControls.style.display = 'none';
-  pcHint.style.display = 'block';
+function updateLayout() {
+  if (isMobileScreen()) {
+    mobileControls.style.display = 'block';
+    pcHint.style.display = 'none';
+  } else {
+    mobileControls.style.display = 'none';
+    pcHint.style.display = 'block';
+  }
 }
+
+window.onload = updateLayout;
 
 // Player
 const player = {
@@ -35,12 +45,8 @@ let input = { x: 0, y: 0 };
 
 // Keyboard controls
 const keys = {};
-window.addEventListener('keydown', e => {
-  keys[e.key] = true;
-});
-window.addEventListener('keyup', e => {
-  keys[e.key] = false;
-});
+window.addEventListener('keydown', e => keys[e.key] = true);
+window.addEventListener('keyup', e => keys[e.key] = false);
 
 function updateKeyboardInput() {
   let x = 0, y = 0;
@@ -73,54 +79,56 @@ function getTouchPos(touch) {
   };
 }
 
-if (isMobile) {
-  joystickBase.addEventListener('touchstart', e => {
-    e.preventDefault();
-    joystickActive = true;
-    const rect = joystickBase.getBoundingClientRect();
-    joystickCenter = {
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2
-    };
-  });
+joystickBase.addEventListener('touchstart', e => {
+  e.preventDefault();
+  joystickActive = true;
+  const rect = joystickBase.getBoundingClientRect();
+  joystickCenter = {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+});
 
-  joystickBase.addEventListener('touchmove', e => {
-    e.preventDefault();
-    if (!joystickActive) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - joystickCenter.x;
-    const dy = touch.clientY - joystickCenter.y;
-    const maxDist = 40;
-    let dist = Math.hypot(dx, dy);
-    let nx = dx, ny = dy;
-    if (dist > maxDist) {
-      nx = dx * maxDist / dist;
-      ny = dy * maxDist / dist;
-      dist = maxDist;
-    }
-    joystickStick.style.transform = `translate(${nx}px, ${ny}px)`;
+joystickBase.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!joystickActive) return;
 
-    if (dist > 5) {
-      input.x = dx / dist;
-      input.y = dy / dist;
-    } else {
-      input.x = 0;
-      input.y = 0;
-    }
-  });
+  const touch = e.touches[0];
+  const dx = touch.clientX - joystickCenter.x;
+  const dy = touch.clientY - joystickCenter.y;
 
-  joystickBase.addEventListener('touchend', e => {
-    e.preventDefault();
-    joystickActive = false;
-    joystickStick.style.transform = 'translate(0px, 0px)';
+  const maxDist = 40;
+  let dist = Math.hypot(dx, dy);
+
+  let nx = dx, ny = dy;
+  if (dist > maxDist) {
+    nx = dx * maxDist / dist;
+    ny = dy * maxDist / dist;
+    dist = maxDist;
+  }
+
+  joystickStick.style.transform = `translate(${nx}px, ${ny}px)`;
+
+  if (dist > 5) {
+    input.x = dx / dist;
+    input.y = dy / dist;
+  } else {
     input.x = 0;
     input.y = 0;
-  });
-}
+  }
+});
+
+joystickBase.addEventListener('touchend', e => {
+  e.preventDefault();
+  joystickActive = false;
+  joystickStick.style.transform = 'translate(0px, 0px)';
+  input.x = 0;
+  input.y = 0;
+});
 
 // Game loop
 function update() {
-  if (!isMobile) {
+  if (!isMobileScreen()) {
     updateKeyboardInput();
   }
 
@@ -130,11 +138,9 @@ function update() {
     player.x += input.x * player.speed;
     player.y += input.y * player.speed;
 
-    // Shrink slightly while moving
     player.radius -= 0.05;
     if (player.radius < player.minRadius) player.radius = player.minRadius;
   } else {
-    // Grow while still
     player.radius += 0.08;
     if (player.radius > player.maxRadius) player.radius = player.maxRadius;
   }
@@ -149,7 +155,7 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Background grid (optional)
+  // Grid
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 1;
   const step = 50;
@@ -172,7 +178,6 @@ function draw() {
   ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
   ctx.fill();
 
-  // Text
   ctx.fillStyle = '#fff';
   ctx.font = '16px sans-serif';
   ctx.fillText(`Radius: ${player.radius.toFixed(1)}`, 10, canvas.height - 10);
