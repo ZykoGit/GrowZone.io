@@ -35,16 +35,11 @@ window.onload = () => {
   const menu = document.getElementById('menu');
   const startBtn = document.getElementById('startBtn');
   const nameInput = document.getElementById('nameInput');
+  const zoneWarningEl = document.getElementById('zoneWarning');
+  const zoneTimerEl = document.getElementById('zoneTimer');
+
   let gameStarted = false;
-
   let playerName = 'You';
-
-  startBtn.addEventListener('click', () => {
-    const raw = (nameInput.value || '').trim();
-    playerName = raw.length > 0 ? raw : 'You';
-    menu.style.display = 'none';
-    gameStarted = true;
-  });
 
   // WORLD
   const world = {
@@ -52,13 +47,17 @@ window.onload = () => {
     height: 4000
   };
 
-  // DANGER ZONE (simple circle that slowly shrinks)
+  // DANGER ZONE (safe circle; fog is outside)
   const dangerZone = {
     x: world.width / 2,
     y: world.height / 2,
-    radius: Math.min(world.width, world.height) * 0.45,
-    shrinkRate: 0.02 // per frame
+    radius: Math.min(world.width, world.height) * 0.45
   };
+
+  const zoneShrinkInterval = 60; // seconds between shrinks
+  const zoneWarningLead = 30;    // seconds before shrink to warn
+  const zoneShrinkAmount = 250;  // how much radius shrinks each time
+  let zoneTimer = 0;             // seconds since last shrink
 
   // PLAYER
   const player = {
@@ -66,12 +65,36 @@ window.onload = () => {
     y: world.height / 2,
     radius: 30,
     minRadius: 15,
-    maxRadius: 200,
+    maxRadius: 250,
     speed: 3,
+    alive: true,
     name: () => playerName
   };
 
   let input = { x: 0, y: 0 };
+
+  function resetGameState() {
+    player.x = world.width / 2;
+    player.y = world.height / 2;
+    player.radius = 30;
+    player.alive = true;
+
+    dangerZone.radius = Math.min(world.width, world.height) * 0.45;
+    zoneTimer = 0;
+
+    bots.length = 0;
+    ensureBots();
+
+    gameStarted = false;
+    menu.style.display = 'flex';
+  }
+
+  startBtn.addEventListener('click', () => {
+    const raw = (nameInput.value || '').trim();
+    playerName = raw.length > 0 ? raw : 'You';
+    menu.style.display = 'none';
+    gameStarted = true;
+  });
 
   // Keyboard
   const keys = {};
@@ -193,7 +216,8 @@ window.onload = () => {
       name: generateBotName(),
       personality,
       vx: 0,
-      vy: 0
+      vy: 0,
+      alive: true
     };
   }
 
@@ -210,13 +234,16 @@ window.onload = () => {
   function updateLeaderboard() {
     const entries = [];
 
-    entries.push({
-      name: player.name(),
-      score: player.radius,
-      you: true
-    });
+    if (player.alive) {
+      entries.push({
+        name: player.name(),
+        score: player.radius,
+        you: true
+      });
+    }
 
     for (const b of bots) {
+      if (!b.alive) continue;
       entries.push({
         name: b.name,
         score: b.radius,
@@ -240,9 +267,12 @@ window.onload = () => {
       li.appendChild(scoreSpan);
       leaderboardList.appendChild(li);
     }
+
+    const remaining = Math.max(0, zoneShrinkInterval - zoneTimer);
+    zoneTimerEl.textContent = `Next shrink: ${Math.ceil(remaining)}s`;
   }
 
-  // BOT AI HELPERS
+  // HELPERS
   function vecTo(fromX, fromY, toX, toY) {
     const dx = toX - fromX;
     const dy = toY - fromY;
@@ -254,24 +284,27 @@ window.onload = () => {
     return Math.hypot(x2 - x1, y2 - y1);
   }
 
-  function isInDangerZone(x, y) {
-    return distance(x, y, dangerZone.x, dangerZone.y) < dangerZone.radius;
+  function isInFog(x, y) {
+    // Fog is OUTSIDE the danger zone circle
+    return distance(x, y, dangerZone.x, dangerZone.y) > dangerZone.radius;
   }
 
-  function updateBot(bot) {
+  // BOT AI
+  function updateBot(bot, dt) {
+    if (!bot.alive) return;
+
     let dir = { x: 0, y: 0 };
 
     const centerDir = vecTo(bot.x, bot.y, world.width / 2, world.height / 2);
-    const fromCenterDir = { x: -centerDir.x, y: -centerDir.y };
+    const inFog = isInFog(bot.x, bot.y);
 
-    const inDanger = isInDangerZone(bot.x, bot.y);
-
-    if (inDanger) {
-      dir.x += fromCenterDir.x * 2;
-      dir.y += fromCenterDir.y * 2;
+    if (inFog) {
+      // Push inward strongly if in fog
+      dir.x += centerDir.x * 2.5;
+      dir.y += centerDir.y * 2.5;
     } else {
       switch (bot.personality) {
-        case 'dumb':
+        case 'dumb': {
           if (Math.random() < 0.02) {
             const angle = Math.random() * Math.PI * 2;
             dir.x += Math.cos(angle);
@@ -281,19 +314,23 @@ window.onload = () => {
             dir.y += bot.vy;
           }
           break;
-        case 'cautious':
+        }
+        case 'cautious': {
           const awayFromPlayer = vecTo(player.x, player.y, bot.x, bot.y);
-          if (player.radius > bot.radius * 1.2 &&
+          if (player.alive &&
+              player.radius > bot.radius * 1.2 &&
               distance(bot.x, bot.y, player.x, player.y) < 600) {
             dir.x += awayFromPlayer.x * 1.5;
             dir.y += awayFromPlayer.y * 1.5;
           } else {
-            dir.x += centerDir.x * 0.5;
-            dir.y += centerDir.y * 0.5;
+            dir.x += centerDir.x * 0.7;
+            dir.y += centerDir.y * 0.7;
           }
           break;
-        case 'aggressive':
-          if (player.radius < bot.radius * 0.8 &&
+        }
+        case 'aggressive': {
+          if (player.alive &&
+              player.radius < bot.radius * 0.8 &&
               distance(bot.x, bot.y, player.x, player.y) < 700) {
             const toPlayer = vecTo(bot.x, bot.y, player.x, player.y);
             dir.x += toPlayer.x * 1.2;
@@ -303,16 +340,18 @@ window.onload = () => {
             dir.y += centerDir.y * 0.7;
           }
           break;
-        case 'wander':
+        }
+        case 'wander': {
           if (Math.random() < 0.03) {
             const angle2 = Math.random() * Math.PI * 2;
             dir.x += Math.cos(angle2);
             dir.y += Math.sin(angle2);
           } else {
-            dir.x += centerDir.x * 0.3;
-            dir.y += centerDir.y * 0.3;
+            dir.x += centerDir.x * 0.4;
+            dir.y += centerDir.y * 0.4;
           }
           break;
+        }
         case 'center':
         default:
           dir.x += centerDir.x;
@@ -328,61 +367,139 @@ window.onload = () => {
     bot.vx = dir.x;
     bot.vy = dir.y;
 
-    bot.x += bot.vx * bot.speed;
-    bot.y += bot.vy * bot.speed;
+    bot.x += bot.vx * bot.speed * dt * 60;
+    bot.y += bot.vy * bot.speed * dt * 60;
 
     bot.x = Math.max(bot.radius, Math.min(world.width - bot.radius, bot.x));
     bot.y = Math.max(bot.radius, Math.min(world.height - bot.radius, bot.y));
 
-    if (inDanger) {
-      bot.radius -= 0.05;
+    // Zone damage
+    if (isInFog(bot.x, bot.y)) {
+      bot.radius -= 15 * dt; // 15 damage per second
     } else {
-      bot.radius += 0.01;
+      bot.radius += 0.5 * dt;
     }
 
     if (bot.radius < 10) {
-      const idx = bots.indexOf(bot);
-      if (idx !== -1) bots.splice(idx, 1);
+      bot.alive = false;
     }
   }
 
+  // MASS / EATING
+  function massFromRadius(r) {
+    return r * r;
+  }
+
+  function radiusFromMass(m) {
+    return Math.sqrt(Math.max(1, m));
+  }
+
+  function handleEating(dt) {
+    if (!player.alive) return;
+
+    // Player vs bots
+    for (const bot of bots) {
+      if (!bot.alive) continue;
+      const d = distance(player.x, player.y, bot.x, bot.y);
+      const biggerPlayer = player.radius > bot.radius * 1.1;
+      const biggerBot = bot.radius > player.radius * 1.1;
+
+      const eatDist = Math.min(player.radius, bot.radius) * 0.8;
+
+      if (d < eatDist) {
+        if (biggerPlayer) {
+          // Player eats bot
+          const mPlayer = massFromRadius(player.radius);
+          const mBot = massFromRadius(bot.radius);
+          const gain = mBot * 0.3;
+          const newMass = mPlayer + gain;
+          player.radius = radiusFromMass(newMass);
+          bot.alive = false;
+        } else if (biggerBot) {
+          // Bot eats player
+          const mPlayer = massFromRadius(player.radius);
+          const mBot = massFromRadius(bot.radius);
+          const gain = mPlayer * 0.3;
+          const newMass = mBot + gain;
+          bot.radius = radiusFromMass(newMass);
+          player.alive = false;
+          resetGameState();
+          return;
+        }
+      }
+    }
+
+    // Clean up dead bots and respawn
+    for (let i = bots.length - 1; i >= 0; i--) {
+      if (!bots[i].alive) bots.splice(i, 1);
+    }
+    ensureBots();
+  }
+
   // GAME UPDATE
-  function update() {
+  let lastTime = performance.now();
+
+  function update(dt) {
     if (!gameStarted) return;
 
-    dangerZone.radius -= dangerZone.shrinkRate;
-    if (dangerZone.radius < 200) dangerZone.radius = 200;
+    // Zone timer
+    zoneTimer += dt;
+    const remaining = zoneShrinkInterval - zoneTimer;
+
+    if (remaining <= zoneWarningLead && remaining > 0) {
+      zoneWarningEl.style.display = 'block';
+    } else {
+      zoneWarningEl.style.display = 'none';
+    }
+
+    if (zoneTimer >= zoneShrinkInterval) {
+      dangerZone.radius -= zoneShrinkAmount;
+      if (dangerZone.radius < 200) dangerZone.radius = 200;
+      zoneTimer = 0;
+    }
 
     if (!isMobileScreen()) {
       updateKeyboardInput();
     }
 
+    if (!player.alive) return;
+
     const moving = input.x !== 0 || input.y !== 0;
 
     if (moving) {
-      player.x += input.x * player.speed;
-      player.y += input.y * player.speed;
+      player.x += input.x * player.speed * dt * 60;
+      player.y += input.y * player.speed * dt * 60;
 
-      player.radius -= 0.05;
+      player.radius -= 3 * dt;
       if (player.radius < player.minRadius) player.radius = player.minRadius;
     } else {
-      player.radius += 0.08;
+      player.radius += 4.8 * dt;
       if (player.radius > player.maxRadius) player.radius = player.maxRadius;
     }
 
     player.x = Math.max(player.radius, Math.min(world.width - player.radius, player.x));
     player.y = Math.max(player.radius, Math.min(world.height - player.radius, player.y));
 
-    if (isInDangerZone(player.x, player.y)) {
-      player.radius -= 0.03;
-      if (player.radius < player.minRadius) player.radius = player.minRadius;
+    // Zone damage (fog)
+    if (isInFog(player.x, player.y)) {
+      player.radius -= 15 * dt; // 15 damage per second
+      if (player.radius < 15) {
+        // Death by zone
+        player.alive = false;
+        resetGameState();
+        return;
+      }
     }
 
-    for (const bot of [...bots]) {
-      updateBot(bot);
+    // Bots
+    for (const bot of bots) {
+      updateBot(bot, dt);
     }
-    ensureBots();
 
+    // Eating
+    handleEating(dt);
+
+    // Leaderboard
     updateLeaderboard();
   }
 
@@ -419,44 +536,65 @@ window.onload = () => {
       ctx.stroke();
     }
 
-    // DANGER ZONE
-    ctx.beginPath();
-    ctx.strokeStyle = 'rgba(255,80,80,0.7)';
-    ctx.lineWidth = 6;
-    ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // BOTS
-    ctx.font = '14px sans-serif';
+    // BOTS (under fog & zone line)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-
     for (const bot of bots) {
+      if (!bot.alive) continue;
+
       ctx.beginPath();
       ctx.fillStyle = '#ffb74d';
       ctx.arc(bot.x, bot.y, bot.radius, 0, Math.PI * 2);
       ctx.fill();
 
+      const fontSize = Math.max(10, Math.min(24, bot.radius * 0.4));
       ctx.fillStyle = '#fff';
+      ctx.font = `${fontSize}px sans-serif`;
       ctx.fillText(bot.name, bot.x, bot.y - bot.radius - 4);
     }
 
-    // PLAYER
-    ctx.beginPath();
-    ctx.fillStyle = '#4caf50';
-    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
-    ctx.fill();
+    // PLAYER (under fog & zone line)
+    if (player.alive) {
+      ctx.beginPath();
+      ctx.fillStyle = '#4caf50';
+      ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+      ctx.fill();
 
-    ctx.fillStyle = '#fff';
-    ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
+      const fontSize = Math.max(10, Math.min(26, player.radius * 0.45));
+      ctx.fillStyle = '#fff';
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
+    }
+
+    // FOG OVERLAY (outside zone)
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(camX, camY, world.width, world.height);
+
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // ZONE LINE (on top of everything)
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(255,80,80,0.9)';
+    ctx.lineWidth = 6;
+    ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
+    ctx.stroke();
 
     ctx.restore();
   }
 
-  function loop() {
-    update();
+  function loop(now) {
+    const dt = (now - lastTime) / 1000;
+    lastTime = now;
+
+    update(dt);
     draw();
     requestAnimationFrame(loop);
   }
-  loop();
+  requestAnimationFrame(loop);
 };
