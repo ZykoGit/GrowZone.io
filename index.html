@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <title>GrowZone Prototype</title>
 
-  <!-- IMPORTANT: Fixes mobile zoom + scaling -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
   <style>
@@ -24,6 +23,41 @@
       z-index: 1;
     }
 
+    /* MENU */
+    #menu {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 50;
+    }
+
+    #menu h1 {
+      font-size: 48px;
+      margin-bottom: 30px;
+    }
+
+    #startBtn {
+      padding: 15px 40px;
+      font-size: 24px;
+      background: #4caf50;
+      border: none;
+      border-radius: 10px;
+      color: white;
+      cursor: pointer;
+    }
+
+    #startBtn:active {
+      transform: scale(0.95);
+    }
+
+    /* MOBILE CONTROLS */
     #mobileControls {
       position: fixed;
       left: 0;
@@ -74,6 +108,12 @@
 
 <body>
   <canvas id="gameCanvas"></canvas>
+
+  <!-- MENU -->
+  <div id="menu">
+    <h1>GrowZone</h1>
+    <button id="startBtn">Start</button>
+  </div>
 
   <div id="pcHint">Move: WASD / Arrows. Stand still to grow.</div>
 
