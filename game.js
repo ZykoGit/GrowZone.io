@@ -46,7 +46,7 @@ window.onload = () => {
   const zoneShrinkInterval = 60;
   const zoneWarningLead = 30;
   const zoneShrinkAmount = 250;
-  const zoneShrinkSpeed = 180; // pixels per second (smooth shrink)
+  const zoneShrinkSpeed = 180; // smooth shrink speed
   let zoneTimer = 0;
   let lastTickSecond = null;
   let zoneLevel = 0;
@@ -375,7 +375,7 @@ window.onload = () => {
       ctx.arc(bot.x, bot.y, bot.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      const fontSize = Math.max(10, Math.min(24, bot.radius * 0.4));
+      const fontSize = Math.max(12, bot.radius * 0.45);
       ctx.fillStyle = '#fff';
       ctx.font = `${fontSize}px sans-serif`;
       ctx.fillText(bot.name, bot.x, bot.y - bot.radius - 4);
@@ -388,7 +388,7 @@ window.onload = () => {
       ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
       ctx.fill();
 
-      const fontSize = Math.max(10, Math.min(26, player.radius * 0.45));
+      const fontSize = Math.max(12, player.radius * 0.45);
       ctx.fillStyle = '#fff';
       ctx.font = `${fontSize}px sans-serif`;
       ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
