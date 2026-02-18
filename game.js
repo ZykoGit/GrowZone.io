@@ -353,6 +353,14 @@ window.onload = () => {
 
         ctx.restore();
         ctx.globalCompositeOperation = "source-over";
+        // ANTI‑FOG OVERLAY (cancels red tint inside safe zone)
+        ctx.save();
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.beginPath();
+        ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.globalCompositeOperation = "source-over";
 
         // ZONE OUTLINE
         ctx.beginPath();
