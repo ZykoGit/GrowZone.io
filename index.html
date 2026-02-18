@@ -88,44 +88,6 @@
       transform: scale(0.96);
     }
 
-    /* MOBILE CONTROLS */
-    #mobileControls {
-      position: fixed;
-      left: 0;
-      bottom: 0;
-      width: 100%;
-      height: 40%;
-      pointer-events: none;
-      z-index: 10;
-    }
-
-    .joystick-base {
-      position: absolute;
-      left: 15%;
-      bottom: 20%;
-      width: 120px;
-      height: 120px;
-      margin-left: -60px;
-      margin-bottom: -60px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.08);
-      pointer-events: auto;
-      touch-action: none;
-    }
-
-    .joystick-stick {
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: 60px;
-      height: 60px;
-      margin-left: -30px;
-      margin-top: -30px;
-      border-radius: 50%;
-      background: rgba(255,255,255,0.4);
-      touch-action: none;
-    }
-
     #pcHint {
       position: fixed;
       top: 10px;
@@ -229,12 +191,6 @@
 
   <div id="pcHint">Move: WASD / Arrows. Stand still to grow.</div>
 
-  <div id="mobileControls" style="display:none;">
-    <div class="joystick-base" id="joystickBase">
-      <div class="joystick-stick" id="joystickStick"></div>
-    </div>
-  </div>
-
   <div id="leaderboard">
     <h3>Leaderboard</h3>
     <ul id="leaderboardList"></ul>
@@ -243,6 +199,9 @@
 
   <div id="zoneWarning">ZONE SHRINKING SOON</div>
 
+  <script src="audio.js"></script>
+  <script src="bots.js"></script>
+  <script src="joystick.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
