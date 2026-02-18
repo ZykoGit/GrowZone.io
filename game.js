@@ -56,8 +56,10 @@ window.onload = () => {
 
   const zoneShrinkInterval = 60; // seconds between shrinks
   const zoneWarningLead = 30;    // seconds before shrink to warn
-  const zoneShrinkAmount = 250;  // how much radius shrinks each time
+  const zoneShrinkAmount = 250;  // radius shrink amount
   let zoneTimer = 0;             // seconds since last shrink
+  let lastTickSecond = null;
+  let zoneLevel = 0;             // how many times zone has shrunk
 
   // PLAYER
   const player = {
@@ -67,115 +69,137 @@ window.onload = () => {
     minRadius: 15,
     maxRadius: 250,
     speed: 3,
-    alive: true,
+    alive: false,
     name: () => playerName
   };
 
   let input = { x: 0, y: 0 };
 
-  function resetGameState() {
-    player.x = world.width / 2;
-    player.y = world.height / 2;
-    player.radius = 30;
-    player.alive = true;
+  // RESPAWN MODE: 'full' or 'soft'
+  let respawnMode = 'full';
 
-    dangerZone.radius = Math.min(world.width, world.height) * 0.45;
-    zoneTimer = 0;
-
-    bots.length = 0;
-    ensureBots();
-
-    gameStarted = false;
-    menu.style.display = 'flex';
-  }
-
-  startBtn.addEventListener('click', () => {
-    const raw = (nameInput.value || '').trim();
-    playerName = raw.length > 0 ? raw : 'You';
-    menu.style.display = 'none';
-    gameStarted = true;
-  });
-
-  // Keyboard
-  const keys = {};
-  window.addEventListener('keydown', e => keys[e.key] = true);
-  window.addEventListener('keyup', e => keys[e.key] = false);
-
-  function updateKeyboardInput() {
-    let x = 0, y = 0;
-    if (keys['w'] || keys['ArrowUp']) y -= 1;
-    if (keys['s'] || keys['ArrowDown']) y += 1;
-    if (keys['a'] || keys['ArrowLeft']) x -= 1;
-    if (keys['d'] || keys['ArrowRight']) x += 1;
-
-    const len = Math.hypot(x, y);
-    if (len > 0) {
-      input.x = x / len;
-      input.y = y / len;
-    } else {
-      input.x = 0;
-      input.y = 0;
+  // SOUND SYSTEM
+  class Sound {
+    constructor(src, { loop = false, volume = 1 } = {}) {
+      this.audio = new Audio(src);
+      this.audio.loop = loop;
+      this.audio.volume = volume;
+    }
+    play() {
+      this.audio.currentTime = 0;
+      this.audio.play().catch(() => {});
+    }
+    playIfNotPlaying() {
+      if (this.audio.paused) {
+        this.audio.currentTime = 0;
+        this.audio.play().catch(() => {});
+      }
+    }
+    stop() {
+      this.audio.pause();
+      this.audio.currentTime = 0;
+    }
+    setVolume(v) {
+      this.audio.volume = Math.max(0, Math.min(1, v));
     }
   }
 
-  // Mobile joystick
-  const joystickBase = document.getElementById('joystickBase');
-  const joystickStick = document.getElementById('joystickStick');
-  let joystickActive = false;
-  let joystickCenter = { x: 0, y: 0 };
+  const sounds = {
+    moving: new Sound('sounds/moving.mp3', { loop: true, volume: 0.6 }),
+    still: new Sound('sounds/still.mp3', { loop: true, volume: 0.5 }),
+    zoneshrink: new Sound('sounds/zoneshrink.mp3', { loop: false, volume: 0.7 }),
+    zonewarning: new Sound('sounds/zonewarning.mp3', { loop: false, volume: 0.9 }),
+    zonetick: new Sound('sounds/zonetick.mp3', { loop: false, volume: 0.8 }),
+    zoneboom: new Sound('sounds/zoneboom.mp3', { loop: false, volume: 1.0 }),
+    dangerzonesizzle: new Sound('sounds/dangerzonesizzle.mp3', { loop: true, volume: 0.6 }),
+    playereat: new Sound('sounds/playereat.mp3', { loop: false, volume: 0.9 }),
+    botvbot: new Sound('sounds/botvbot.mp3', { loop: false, volume: 0.8 }),
+    startclick: new Sound('sounds/startclick.mp3', { loop: false, volume: 0.7 }),
+    nameaccept: new Sound('sounds/nameaccept.mp3', { loop: false, volume: 0.7 }),
+    gamestart: new Sound('sounds/gamestart.mp3', { loop: false, volume: 0.9 }),
+    playerdeath: new Sound('sounds/playerdeath.mp3', { loop: false, volume: 1.0 }),
+    menureturn: new Sound('sounds/menureturn.mp3', { loop: false, volume: 0.6 }),
+    music: null
+  };
 
-  if (joystickBase && joystickStick) {
-    joystickBase.addEventListener('touchstart', e => {
-      e.preventDefault();
-      joystickActive = true;
-      const rect = joystickBase.getBoundingClientRect();
-      joystickCenter = {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2
-      };
-    });
+  const musicTracks = [
+    'sounds/backgroundmusic1.mp3',
+    'sounds/backgroundmusic2.mp3',
+    'sounds/backgroundmusic3.mp3',
+    'sounds/backgroundmusic4.mp3',
+    'sounds/backgroundmusic5.mp3'
+  ];
+  let musicBaseVolume = 0.3;
+  let musicTargetVolume = musicBaseVolume;
+  let musicInitialized = false;
 
-    joystickBase.addEventListener('touchmove', e => {
-      e.preventDefault();
-      if (!joystickActive) return;
-
-      const touch = e.touches[0];
-      const dx = touch.clientX - joystickCenter.x;
-      const dy = touch.clientY - joystickCenter.y;
-
-      const maxDist = 40;
-      let dist = Math.hypot(dx, dy);
-
-      let nx = dx, ny = dy;
-      if (dist > maxDist) {
-        nx = dx * maxDist / dist;
-        ny = dy * maxDist / dist;
-        dist = maxDist;
-      }
-
-      joystickStick.style.transform = `translate(${nx}px, ${ny}px)`;
-
-      if (dist > 5) {
-        input.x = dx / dist;
-        input.y = dy / dist;
-      } else {
-        input.x = 0;
-        input.y = 0;
-      }
-    });
-
-    joystickBase.addEventListener('touchend', e => {
-      e.preventDefault();
-      joystickActive = false;
-      joystickStick.style.transform = 'translate(0px, 0px)';
-      input.x = 0;
-      input.y = 0;
-    });
+  function initMusic() {
+    if (musicInitialized) return;
+    musicInitialized = true;
+    const track = musicTracks[Math.floor(Math.random() * musicTracks.length)];
+    sounds.music = new Sound(track, { loop: true, volume: musicBaseVolume });
+    sounds.music.playIfNotPlaying();
   }
 
-  // CAMERA + ZOOM
-  function getZoom() {
-    return 35 / player.radius;
+  function setMusicDangerMode(on) {
+    musicTargetVolume = on ? 0.12 : musicBaseVolume;
+  }
+
+  function updateMusicVolume(dt) {
+    if (!sounds.music) return;
+    const current = sounds.music.audio.volume;
+    const target = musicTargetVolume;
+    const diff = target - current;
+    const step = dt * 0.8;
+    if (Math.abs(diff) < 0.01) {
+      sounds.music.setVolume(target);
+    } else {
+      sounds.music.setVolume(current + Math.sign(diff) * step);
+    }
+  }
+
+  function stopMovementLoops() {
+    sounds.moving.stop();
+    sounds.still.stop();
+    sounds.dangerzonesizzle.stop();
+  }
+
+  let wasMoving = false;
+  let wasInFog = false;
+
+  function updateMovementSounds(isMoving, inFog) {
+    if (inFog) {
+      sounds.moving.stop();
+      sounds.still.stop();
+      sounds.dangerzonesizzle.playIfNotPlaying();
+    } else {
+      sounds.dangerzonesizzle.stop();
+      if (isMoving) {
+        sounds.still.stop();
+        sounds.moving.playIfNotPlaying();
+      } else {
+        sounds.moving.stop();
+        sounds.still.playIfNotPlaying();
+      }
+    }
+    wasMoving = isMoving;
+    wasInFog = inFog;
+  }
+
+  // WORLD HELPERS
+  function vecTo(fromX, fromY, toX, toY) {
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: dx / len, y: dy / len };
+  }
+
+  function distance(x1, y1, x2, y2) {
+    return Math.hypot(x2 - x1, y2 - y1);
+  }
+
+  function isInFog(x, y) {
+    return distance(x, y, dangerZone.x, dangerZone.y) > dangerZone.radius;
   }
 
   // BOT SYSTEM
@@ -199,11 +223,11 @@ window.onload = () => {
     return randomFrom(sillyFirst) + randomFrom(sillySecond);
   }
 
-  function createBot() {
+  function createBotRaw() {
     const angle = Math.random() * Math.PI * 2;
-    const dist = world.width * 0.45 + Math.random() * 400;
-    const x = world.width / 2 + Math.cos(angle) * dist;
-    const y = world.height / 2 + Math.sin(angle) * dist;
+    const dist = dangerZone.radius + 200 + Math.random() * 400;
+    const x = dangerZone.x + Math.cos(angle) * dist;
+    const y = dangerZone.y + Math.sin(angle) * dist;
 
     const personalities = ['dumb', 'cautious', 'aggressive', 'wander', 'center'];
     const personality = personalities[Math.floor(Math.random() * personalities.length)];
@@ -221,12 +245,80 @@ window.onload = () => {
     };
   }
 
+  function collides(x, y, r, other) {
+    return distance(x, y, other.x, other.y) < (r + other.radius) * 0.9;
+  }
+
+  function createBot() {
+    let bot;
+    let attempts = 0;
+    do {
+      bot = createBotRaw();
+      attempts++;
+      let bad = false;
+      if (player.alive && collides(bot.x, bot.y, bot.radius, player)) bad = true;
+      if (!bad) {
+        for (const b of bots) {
+          if (!b.alive) continue;
+          if (collides(bot.x, bot.y, bot.radius, b)) {
+            bad = true;
+            break;
+          }
+        }
+      }
+      if (!bad) return bot;
+    } while (attempts < 20);
+    return bot;
+  }
+
   function ensureBots() {
     while (bots.length < targetBotCount) {
       bots.push(createBot());
     }
   }
+
+  function scrambleBotNames() {
+    for (const b of bots) {
+      if (!b.alive) continue;
+      b.name = generateBotName();
+    }
+  }
+
   ensureBots();
+
+  // SAFE PLAYER SPAWN
+  function spawnPlayerCenter() {
+    player.x = dangerZone.x;
+    player.y = dangerZone.y;
+  }
+
+  function spawnPlayerRandomSafe() {
+    let attempts = 0;
+    while (attempts < 30) {
+      attempts++;
+      const angle = Math.random() * Math.PI * 2;
+      const r = Math.random() * (dangerZone.radius - player.radius - 40);
+      const x = dangerZone.x + Math.cos(angle) * r;
+      const y = dangerZone.y + Math.sin(angle) * r;
+
+      if (isInFog(x, y)) continue;
+
+      let bad = false;
+      for (const b of bots) {
+        if (!b.alive) continue;
+        if (distance(x, y, b.x, b.y) < (player.radius + b.radius) * 0.9) {
+          bad = true;
+          break;
+        }
+      }
+      if (!bad) {
+        player.x = x;
+        player.y = y;
+        return;
+      }
+    }
+    spawnPlayerCenter();
+  }
 
   // LEADERBOARD
   const leaderboardList = document.getElementById('leaderboardList');
@@ -272,34 +364,18 @@ window.onload = () => {
     zoneTimerEl.textContent = `Next shrink: ${Math.ceil(remaining)}s`;
   }
 
-  // HELPERS
-  function vecTo(fromX, fromY, toX, toY) {
-    const dx = toX - fromX;
-    const dy = toY - fromY;
-    const len = Math.hypot(dx, dy) || 1;
-    return { x: dx / len, y: dy / len };
-  }
-
-  function distance(x1, y1, x2, y2) {
-    return Math.hypot(x2 - x1, y2 - y1);
-  }
-
-  function isInFog(x, y) {
-    // Fog is OUTSIDE the danger zone circle
-    return distance(x, y, dangerZone.x, dangerZone.y) > dangerZone.radius;
-  }
-
   // BOT AI
   function updateBot(bot, dt) {
     if (!bot.alive) return;
 
     let dir = { x: 0, y: 0 };
 
-    const centerDir = vecTo(bot.x, bot.y, world.width / 2, world.height / 2);
+    const centerDir = vecTo(bot.x, bot.y, dangerZone.x, dangerZone.y);
+    const distToCenter = distance(bot.x, bot.y, dangerZone.x, dangerZone.y);
     const inFog = isInFog(bot.x, bot.y);
+    const edgeBuffer = 40;
 
-    if (inFog) {
-      // Push inward strongly if in fog
+    if (inFog || distToCenter > dangerZone.radius - edgeBuffer) {
       dir.x += centerDir.x * 2.5;
       dir.y += centerDir.y * 2.5;
     } else {
@@ -373,9 +449,8 @@ window.onload = () => {
     bot.x = Math.max(bot.radius, Math.min(world.width - bot.radius, bot.x));
     bot.y = Math.max(bot.radius, Math.min(world.height - bot.radius, bot.y));
 
-    // Zone damage
     if (isInFog(bot.x, bot.y)) {
-      bot.radius -= 15 * dt; // 15 damage per second
+      bot.radius -= 15 * dt;
     } else {
       bot.radius += 0.5 * dt;
     }
@@ -395,74 +470,269 @@ window.onload = () => {
   }
 
   function handleEating(dt) {
-    if (!player.alive) return;
+    if (player.alive) {
+      for (const bot of bots) {
+        if (!bot.alive) continue;
+        const d = distance(player.x, player.y, bot.x, bot.y);
+        const biggerPlayer = player.radius > bot.radius * 1.1;
+        const biggerBot = bot.radius > player.radius * 1.1;
+        const eatDist = Math.min(player.radius, bot.radius) * 0.8;
 
-    // Player vs bots
-    for (const bot of bots) {
-      if (!bot.alive) continue;
-      const d = distance(player.x, player.y, bot.x, bot.y);
-      const biggerPlayer = player.radius > bot.radius * 1.1;
-      const biggerBot = bot.radius > player.radius * 1.1;
-
-      const eatDist = Math.min(player.radius, bot.radius) * 0.8;
-
-      if (d < eatDist) {
-        if (biggerPlayer) {
-          // Player eats bot
-          const mPlayer = massFromRadius(player.radius);
-          const mBot = massFromRadius(bot.radius);
-          const gain = mBot * 0.3;
-          const newMass = mPlayer + gain;
-          player.radius = radiusFromMass(newMass);
-          bot.alive = false;
-        } else if (biggerBot) {
-          // Bot eats player
-          const mPlayer = massFromRadius(player.radius);
-          const mBot = massFromRadius(bot.radius);
-          const gain = mPlayer * 0.3;
-          const newMass = mBot + gain;
-          bot.radius = radiusFromMass(newMass);
-          player.alive = false;
-          resetGameState();
-          return;
+        if (d < eatDist) {
+          if (biggerPlayer) {
+            const mPlayer = massFromRadius(player.radius);
+            const mBot = massFromRadius(bot.radius);
+            const gain = mBot * 0.3;
+            const newMass = mPlayer + gain;
+            player.radius = radiusFromMass(newMass);
+            bot.alive = false;
+            sounds.playereat.play();
+          } else if (biggerBot) {
+            const mPlayer = massFromRadius(player.radius);
+            const mBot = massFromRadius(bot.radius);
+            const gain = mPlayer * 0.3;
+            const newMass = mBot + gain;
+            bot.radius = radiusFromMass(newMass);
+            player.alive = false;
+            sounds.playerdeath.play();
+            handlePlayerDeath();
+            return;
+          }
         }
       }
     }
 
-    // Clean up dead bots and respawn
+    // Bot vs bot
+    for (let i = 0; i < bots.length; i++) {
+      const a = bots[i];
+      if (!a.alive) continue;
+      for (let j = i + 1; j < bots.length; j++) {
+        const b = bots[j];
+        if (!b.alive) continue;
+        const d = distance(a.x, a.y, b.x, b.y);
+        const biggerA = a.radius > b.radius * 1.1;
+        const biggerB = b.radius > a.radius * 1.1;
+        const eatDist = Math.min(a.radius, b.radius) * 0.8;
+
+        if (d < eatDist) {
+          if (biggerA) {
+            const mA = massFromRadius(a.radius);
+            const mB = massFromRadius(b.radius);
+            const gain = mB * 0.3;
+            a.radius = radiusFromMass(mA + gain);
+            b.alive = false;
+            sounds.botvbot.play();
+          } else if (biggerB) {
+            const mA = massFromRadius(a.radius);
+            const mB = massFromRadius(b.radius);
+            const gain = mA * 0.3;
+            b.radius = radiusFromMass(mB + gain);
+            a.alive = false;
+            sounds.botvbot.play();
+          }
+        }
+      }
+    }
+
     for (let i = bots.length - 1; i >= 0; i--) {
       if (!bots[i].alive) bots.splice(i, 1);
     }
     ensureBots();
   }
 
+  // PLAYER DEATH HANDLING (soft vs full reset)
+  function hardResetWorld() {
+    bots.length = 0;
+    ensureBots();
+    dangerZone.radius = Math.min(world.width, world.height) * 0.45;
+    zoneTimer = 0;
+    lastTickSecond = null;
+    zoneLevel = 0;
+    zoneWarningEl.style.display = 'none';
+  }
+
+  function softResetWorld() {
+    // Keep bots, sizes, zone, timers; just scramble names
+    scrambleBotNames();
+    zoneWarningEl.style.display = 'none';
+    lastTickSecond = null;
+  }
+
+  function handlePlayerDeath() {
+    player.alive = false;
+    stopMovementLoops();
+    sounds.menureturn.play();
+
+    // Decide soft vs full
+    let doSoft = false;
+    if (zoneLevel < 3) {
+      doSoft = Math.random() < 0.5;
+    }
+
+    if (!doSoft) {
+      respawnMode = 'full';
+      hardResetWorld();
+    } else {
+      respawnMode = 'soft';
+      softResetWorld();
+    }
+
+    gameStarted = false;
+    menu.style.display = 'flex';
+  }
+
+  // INPUT
+  const keys = {};
+  window.addEventListener('keydown', e => keys[e.key] = true);
+  window.addEventListener('keyup', e => keys[e.key] = false);
+
+  function updateKeyboardInput() {
+    let x = 0, y = 0;
+    if (keys['w'] || keys['ArrowUp']) y -= 1;
+    if (keys['s'] || keys['ArrowDown']) y += 1;
+    if (keys['a'] || keys['ArrowLeft']) x -= 1;
+    if (keys['d'] || keys['ArrowRight']) x += 1;
+
+    const len = Math.hypot(x, y);
+    if (len > 0) {
+      input.x = x / len;
+      input.y = y / len;
+    } else {
+      input.x = 0;
+      input.y = 0;
+    }
+  }
+
+  // Mobile joystick
+  const joystickBase = document.getElementById('joystickBase');
+  const joystickStick = document.getElementById('joystickStick');
+  let joystickActive = false;
+  let joystickCenter = { x: 0, y: 0 };
+
+  if (joystickBase && joystickStick) {
+    joystickBase.addEventListener('touchstart', e => {
+      e.preventDefault();
+      joystickActive = true;
+      const rect = joystickBase.getBoundingClientRect();
+      joystickCenter = {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+      };
+    });
+
+    joystickBase.addEventListener('touchmove', e => {
+      e.preventDefault();
+      if (!joystickActive) return;
+
+      const touch = e.touches[0];
+      const dx = touch.clientX - joystickCenter.x;
+      const dy = touch.clientY - joystickCenter.y;
+
+      const maxDist = 40;
+      let dist = Math.hypot(dx, dy);
+
+      let nx = dx, ny = dy;
+      if (dist > maxDist) {
+        nx = dx * maxDist / dist;
+        ny = dy * maxDist / dist;
+        dist = maxDist;
+      }
+
+      joystickStick.style.transform = `translate(${nx}px, ${ny}px)`;
+
+      if (dist > 5) {
+        input.x = dx / dist;
+        input.y = dy / dist;
+      } else {
+        input.x = 0;
+        input.y = 0;
+      }
+    });
+
+    joystickBase.addEventListener('touchend', e => {
+      e.preventDefault();
+      joystickActive = false;
+      joystickStick.style.transform = 'translate(0px, 0px)';
+      input.x = 0;
+    });
+  }
+
+  // CAMERA + ZOOM
+  function getZoom() {
+    return 35 / player.radius;
+  }
+
+  // START BUTTON
+  startBtn.addEventListener('click', () => {
+    const raw = (nameInput.value || '').trim();
+    playerName = raw.length > 0 ? raw : 'You';
+    sounds.startclick.play();
+    sounds.nameaccept.play();
+    sounds.gamestart.play();
+    initMusic();
+
+    player.radius = 30;
+    player.alive = true;
+
+    if (respawnMode === 'soft') {
+      spawnPlayerRandomSafe();
+    } else {
+      spawnPlayerCenter();
+    }
+
+    menu.style.display = 'none';
+    gameStarted = true;
+  });
+
   // GAME UPDATE
   let lastTime = performance.now();
 
   function update(dt) {
-    if (!gameStarted) return;
+    if (!gameStarted) {
+      updateMusicVolume(dt);
+      return;
+    }
 
-    // Zone timer
+    // Zone timer + warnings
     zoneTimer += dt;
     const remaining = zoneShrinkInterval - zoneTimer;
 
     if (remaining <= zoneWarningLead && remaining > 0) {
-      zoneWarningEl.style.display = 'block';
+      if (zoneWarningEl.style.display === 'none') {
+        zoneWarningEl.style.display = 'block';
+        sounds.zonewarning.play();
+      }
     } else {
       zoneWarningEl.style.display = 'none';
+    }
+
+    if (remaining <= 5 && remaining > 0) {
+      const sec = Math.ceil(remaining);
+      if (sec !== lastTickSecond) {
+        lastTickSecond = sec;
+        sounds.zonetick.play();
+      }
     }
 
     if (zoneTimer >= zoneShrinkInterval) {
       dangerZone.radius -= zoneShrinkAmount;
       if (dangerZone.radius < 200) dangerZone.radius = 200;
       zoneTimer = 0;
+      lastTickSecond = null;
+      zoneLevel++;
+      sounds.zoneboom.play();
+      sounds.zoneshrink.play();
     }
 
     if (!isMobileScreen()) {
       updateKeyboardInput();
     }
 
-    if (!player.alive) return;
+    if (!player.alive) {
+      updateLeaderboard();
+      updateMusicVolume(dt);
+      return;
+    }
 
     const moving = input.x !== 0 || input.y !== 0;
 
@@ -480,27 +750,27 @@ window.onload = () => {
     player.x = Math.max(player.radius, Math.min(world.width - player.radius, player.x));
     player.y = Math.max(player.radius, Math.min(world.height - player.radius, player.y));
 
-    // Zone damage (fog)
-    if (isInFog(player.x, player.y)) {
-      player.radius -= 15 * dt; // 15 damage per second
+    const inFog = isInFog(player.x, player.y);
+    if (inFog) {
+      player.radius -= 15 * dt;
       if (player.radius < 15) {
-        // Death by zone
-        player.alive = false;
-        resetGameState();
+        sounds.playerdeath.play();
+        handlePlayerDeath();
+        updateMusicVolume(dt);
         return;
       }
     }
 
-    // Bots
+    updateMovementSounds(moving, inFog);
+    setMusicDangerMode(inFog || remaining <= zoneWarningLead);
+
     for (const bot of bots) {
       updateBot(bot, dt);
     }
 
-    // Eating
     handleEating(dt);
-
-    // Leaderboard
     updateLeaderboard();
+    updateMusicVolume(dt);
   }
 
   // DRAW
@@ -516,6 +786,8 @@ window.onload = () => {
 
     const camX = player.x - canvas.width / (2 * zoom);
     const camY = player.y - canvas.height / (2 * zoom);
+    const viewW = canvas.width / zoom;
+    const viewH = canvas.height / zoom;
 
     ctx.translate(-camX, -camY);
 
@@ -566,11 +838,11 @@ window.onload = () => {
       ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
     }
 
-    // FOG OVERLAY (outside zone)
+    // FOG OVERLAY (only outside zone, over everything so far)
     ctx.save();
     ctx.globalAlpha = 0.35;
     ctx.fillStyle = '#ff0000';
-    ctx.fillRect(camX, camY, world.width, world.height);
+    ctx.fillRect(camX, camY, viewW, viewH);
 
     ctx.globalCompositeOperation = 'destination-out';
     ctx.beginPath();
@@ -578,7 +850,7 @@ window.onload = () => {
     ctx.fill();
     ctx.restore();
 
-    // ZONE LINE (on top of everything)
+    // ZONE LINE (on top)
     ctx.beginPath();
     ctx.strokeStyle = 'rgba(255,80,80,0.9)';
     ctx.lineWidth = 6;
