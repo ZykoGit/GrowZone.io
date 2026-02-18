@@ -25,11 +25,7 @@ window.onload = () => {
   const nameInput = document.getElementById('nameInput');
 
   function updateLayout() {
-    if (isMobileScreen()) {
-      pcHint.style.display = 'none';
-    } else {
-      pcHint.style.display = 'block';
-    }
+    pcHint.style.display = isMobileScreen() ? 'none' : 'block';
   }
   updateLayout();
 
@@ -38,20 +34,19 @@ window.onload = () => {
   const { sounds, initMusic, setMusicDangerMode, updateMusicVolume, stopMovementLoops, updateMovementSounds } = audio;
 
   // WORLD
-  const world = {
-    width: 4000,
-    height: 4000
-  };
+  const world = { width: 4000, height: 4000 };
 
   const dangerZone = {
     x: world.width / 2,
     y: world.height / 2,
-    radius: Math.min(world.width, world.height) * 0.45
+    radius: Math.min(world.width, world.height) * 0.45,
+    targetRadius: Math.min(world.width, world.height) * 0.45
   };
 
   const zoneShrinkInterval = 60;
   const zoneWarningLead = 30;
   const zoneShrinkAmount = 250;
+  const zoneShrinkSpeed = 180; // pixels per second (smooth shrink)
   let zoneTimer = 0;
   let lastTickSecond = null;
   let zoneLevel = 0;
@@ -69,20 +64,17 @@ window.onload = () => {
     name: () => playerName
   };
 
-  // RESPAWN MODE
-  let respawnMode = 'full'; // 'full' or 'soft'
+  let respawnMode = 'full';
   let gameStarted = false;
 
-  // BOTS SYSTEM
+  // PLAYER DEATH HANDLER
   function handlePlayerDeath() {
     player.alive = false;
     stopMovementLoops();
     sounds.menureturn.play();
 
     let doSoft = false;
-    if (zoneLevel < 3) {
-      doSoft = Math.random() < 0.5;
-    }
+    if (zoneLevel < 3) doSoft = Math.random() < 0.5;
 
     if (!doSoft) {
       respawnMode = 'full';
@@ -96,6 +88,7 @@ window.onload = () => {
     menu.style.display = 'flex';
   }
 
+  // BOTS SYSTEM
   const botsSystem = createBotsSystem(world, dangerZone, player, audio, handlePlayerDeath);
   const { bots, ensureBots, updateBots, handleEating, scrambleBotNames } = botsSystem;
   ensureBots();
@@ -171,6 +164,7 @@ window.onload = () => {
     bots.length = 0;
     ensureBots();
     dangerZone.radius = Math.min(world.width, world.height) * 0.45;
+    dangerZone.targetRadius = dangerZone.radius;
     zoneTimer = 0;
     lastTickSecond = null;
     zoneLevel = 0;
@@ -191,24 +185,15 @@ window.onload = () => {
     const entries = [];
 
     if (player.alive) {
-      entries.push({
-        name: player.name(),
-        score: player.radius,
-        you: true
-      });
+      entries.push({ name: player.name(), score: player.radius, you: true });
     }
 
     for (const b of bots) {
       if (!b.alive) continue;
-      entries.push({
-        name: b.name,
-        score: b.radius,
-        you: false
-      });
+      entries.push({ name: b.name, score: b.radius, you: false });
     }
 
     entries.sort((a, b) => b.score - a.score);
-
     const top = entries.slice(0, 5);
 
     leaderboardList.innerHTML = '';
@@ -259,6 +244,7 @@ window.onload = () => {
       return;
     }
 
+    // ZONE TIMER
     zoneTimer += dt;
     const remaining = zoneShrinkInterval - zoneTimer;
 
@@ -279,9 +265,10 @@ window.onload = () => {
       }
     }
 
+    // SMOOTH SHRINK
     if (zoneTimer >= zoneShrinkInterval) {
-      dangerZone.radius -= zoneShrinkAmount;
-      if (dangerZone.radius < 200) dangerZone.radius = 200;
+      dangerZone.targetRadius -= zoneShrinkAmount;
+      if (dangerZone.targetRadius < 200) dangerZone.targetRadius = 200;
       zoneTimer = 0;
       lastTickSecond = null;
       zoneLevel++;
@@ -289,9 +276,19 @@ window.onload = () => {
       sounds.zoneshrink.play();
     }
 
-    if (!isMobileScreen()) {
-      updateKeyboardInput();
+    // Smoothly animate radius toward target
+    if (dangerZone.radius !== dangerZone.targetRadius) {
+      const diff = dangerZone.targetRadius - dangerZone.radius;
+      const step = Math.sign(diff) * zoneShrinkSpeed * dt;
+      if (Math.abs(step) > Math.abs(diff)) {
+        dangerZone.radius = dangerZone.targetRadius;
+      } else {
+        dangerZone.radius += step;
+      }
     }
+
+    // INPUT
+    if (!isMobileScreen()) updateKeyboardInput();
 
     if (!player.alive) {
       updateLeaderboard();
@@ -337,11 +334,9 @@ window.onload = () => {
 
   function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     if (!gameStarted) return;
 
     const zoom = getZoom();
-
     ctx.save();
     ctx.scale(zoom, zoom);
 
@@ -399,9 +394,9 @@ window.onload = () => {
       ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
     }
 
-    // FOG
+    // FOG (FIXED)
     ctx.save();
-    ctx.globalAlpha = 0.35;
+    ctx.globalAlpha = 0.28;
     ctx.fillStyle = '#ff0000';
     ctx.fillRect(camX, camY, viewW, viewH);
 
@@ -409,7 +404,9 @@ window.onload = () => {
     ctx.beginPath();
     ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
     ctx.fill();
+
     ctx.restore();
+    ctx.globalCompositeOperation = 'source-over';
 
     // ZONE LINE
     ctx.beginPath();
@@ -424,7 +421,6 @@ window.onload = () => {
   function loop(now) {
     const dt = (now - lastTime) / 1000;
     lastTime = now;
-
     update(dt);
     draw();
     requestAnimationFrame(loop);
