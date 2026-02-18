@@ -394,19 +394,24 @@ window.onload = () => {
       ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
     }
 
-    // FOG (FIXED)
-    ctx.save();
-    ctx.globalAlpha = 0.28;
-    ctx.fillStyle = '#ff0000';
-    ctx.fillRect(camX, camY, viewW, viewH);
+// FOG OVERLAY (final working version)
+ctx.save();
 
-    ctx.globalCompositeOperation = 'destination-out';
-    ctx.beginPath();
-    ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
-    ctx.fill();
+// Draw fog over the visible world area (world coordinates)
+ctx.globalAlpha = 0.28;
+ctx.fillStyle = '#ff0000';
+ctx.fillRect(camX, camY, viewW, viewH);
 
-    ctx.restore();
-    ctx.globalCompositeOperation = 'source-over';
+// Cut out the safe zone (also world coordinates)
+ctx.globalCompositeOperation = 'destination-out';
+ctx.beginPath();
+ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
+ctx.fill();
+
+// Restore normal drawing mode
+ctx.restore();
+ctx.globalCompositeOperation = 'source-over';
+
 
     // ZONE LINE
     ctx.beginPath();
