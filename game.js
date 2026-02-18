@@ -9,7 +9,7 @@ window.onload = () => {
     window.addEventListener("resize", resize);
     resize();
 
-    // UI elements
+    // UI
     const leaderboardList = document.getElementById("leaderboardList");
     const zoneTimerEl = document.getElementById("zoneTimer");
     const zoneWarningEl = document.getElementById("zoneWarning");
@@ -17,9 +17,16 @@ window.onload = () => {
     const startBtn = document.getElementById("startBtn");
     const nameInput = document.getElementById("nameInput");
 
-    // AUDIO (from audio.js)
+    // AUDIO
     const audio = setupAudio();
-    const { sounds, initMusic, updateMusicVolume, setMusicDangerMode, stopMovementLoops, updateMovementSounds } = audio;
+    const {
+        sounds,
+        initMusic,
+        updateMusicVolume,
+        setMusicDangerMode,
+        stopMovementLoops,
+        updateMovementSounds
+    } = audio;
 
     // WORLD
     const world = { width: 4000, height: 4000 };
@@ -57,9 +64,9 @@ window.onload = () => {
     let gameStarted = false;
     let respawnMode = "full";
 
-    // BOTS (from bots.js)
+    // BOTS
     const botsSystem = createBotsSystem(world, dangerZone, player, audio, handlePlayerDeath);
-    const { bots, ensureBots, updateBots, handleEating, scrambleBotNames } = botsSystem;
+    const { bots, ensureBots, updateBots, handleEating, scrambleBotNames, spawnBotInsideSafeZone } = botsSystem;
     ensureBots();
 
     // INPUT
@@ -340,7 +347,7 @@ window.onload = () => {
             ctx.fillText(player.name(), player.x, player.y - player.radius - 4);
         }
 
-        // FOG (WORLD SPACE, FIXED)
+        // FOG (WORLD SPACE)
         ctx.save();
         ctx.globalAlpha = 0.28;
         ctx.fillStyle = "#ff0000";
@@ -350,10 +357,9 @@ window.onload = () => {
         ctx.beginPath();
         ctx.arc(dangerZone.x, dangerZone.y, dangerZone.radius, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.restore();
-        ctx.globalCompositeOperation = "source-over";
-        // ANTI‑FOG OVERLAY (cancels red tint inside safe zone)
+
+        // ANTI‑FOG OVERLAY (guaranteed fix)
         ctx.save();
         ctx.globalCompositeOperation = "destination-out";
         ctx.beginPath();
