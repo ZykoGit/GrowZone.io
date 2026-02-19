@@ -82,7 +82,7 @@
       startclick: new Sound('sounds/startclick.mp3', { loop: false, volume: 0.7 }),
       nameaccept: new Sound('sounds/nameaccept.mp3', { loop: false, volume: 0.7 }),
       gamestart: new Sound('sounds/gamestart.mp3', { loop: false, volume: 0.9 }),
-      playerdeath: new Sound('sounds/playerdeath.mp3', { loop: false, volume: 1.0 }),
+      playerdeath: new Sound('sounds/playerdeath.m4a', { loop: false, volume: 1.0 }),
       menureturn: new Sound('sounds/menureturn.mp3', { loop: false, volume: 0.6 }),
       music: null
     };
